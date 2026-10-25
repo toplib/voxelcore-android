@@ -30,6 +30,8 @@ struct DisplaySettings {
     IntegerSetting width {1280};
     /// @brief Window height (pixels)
     IntegerSetting height {720};
+    /// @brief In-game touch controls sensitivity scale (Android)
+    NumberSetting touchSensitivity {1.0f, 0.1f, 5.0f};
     /// @brief Anti-aliasing samples
     IntegerSetting samples {0};
     /// @brief Framerate limit

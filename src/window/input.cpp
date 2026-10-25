@@ -4,7 +4,11 @@
 #include "util/stringutil.hpp"
 #include "data/dv.hpp"
 
-#include <GLFW/glfw3.h>
+#include "window/glfw_compat.hpp"
+
+#ifndef VC_GLFW_COMPAT
+#define VC_HAS_REAL_GLFW 1
+#endif
 
 #include <unordered_map>
 
@@ -169,8 +173,12 @@ std::string input_util::to_string(Keycode code) {
     if (icode_repr >= GLFW_KEY_KP_0 && icode_repr <= GLFW_KEY_KP_EQUAL) {
         return numpad_key_names[icode_repr - GLFW_KEY_KP_0];
     }
+#ifdef VC_HAS_REAL_GLFW
     const char* name =
         glfwGetKeyName(icode_repr, glfwGetKeyScancode(icode_repr));
+#else
+    const char* name = nullptr;
+#endif
     if (name == nullptr) {
         switch (icode_repr) {
             case GLFW_KEY_TAB:

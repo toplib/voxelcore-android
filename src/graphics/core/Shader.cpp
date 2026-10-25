@@ -8,7 +8,11 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <GL/glew.h>
+#if defined(__ANDROID__) || defined(VC_NO_GLFW)
+#include "window/glfw_compat.hpp"
+#else
 #include <GLFW/glfw3.h>
+#endif
 
 #include "coders/GLSLExtension.hpp"
 #include "debug/Logger.hpp"

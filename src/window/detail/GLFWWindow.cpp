@@ -1,3 +1,6 @@
+#if defined(__ANDROID__) || defined(VC_NO_GLFW)
+// Android builds use window/detail/AndroidWindow.cpp instead of GLFW
+#else
 #include "window/Window.hpp"
 
 #include <GL/glew.h>
@@ -817,3 +820,5 @@ void display::setBgColor(glm::vec3 color) {
 void display::setBgColor(glm::vec4 color) {
     glClearColor(color.r, color.g, color.b, color.a);
 }
+
+#endif  // __ANDROID__ || VC_NO_GLFW

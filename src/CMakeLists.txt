@@ -4,11 +4,94 @@ file(GLOB_RECURSE headers ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 file(GLOB_RECURSE sources ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 list(REMOVE_ITEM sources ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
+# ---- Android port log helper -------------------------------------------------
+# Every message is prefixed with [VC-ANDROID] so that build logs can be grepped
+# in one shot from CI artifacts:  grep "\[VC-ANDROID\]" build.log
+function(vc_android_log)
+    if(ANDROID OR VC_ANDROID_PORT)
+        message(STATUS "[VC-ANDROID] ${ARGN}")
+    endif()
+endfunction()
+
+vc_android_log("============================================================")
+vc_android_log("src/CMakeLists.txt entered (Android branch active)")
+vc_android_log("CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}")
+vc_android_log("ANDROID_ABI=${ANDROID_ABI} ANDROID_PLATFORM=${ANDROID_PLATFORM}")
+vc_android_log("ANDROID_STL=${ANDROID_STL}")
+vc_android_log("CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+vc_android_log("CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}")
+vc_android_log("CMAKE_VERSION=${CMAKE_VERSION}")
+vc_android_log("source dir=${CMAKE_CURRENT_SOURCE_DIR}")
+vc_android_log("============================================================")
+
+if(ANDROID)
+    # Native-activity entry point replaces main.cpp on Android; the engine is
+    # launched from platform/android VoxelCoreActivity -> nativeSetup().
+    list(REMOVE_ITEM sources ${CMAKE_CURRENT_SOURCE_DIR}/window/detail/GLFWWindow.cpp)
+    vc_android_log("GLFWWindow.cpp EXCLUDED from sources")
+    vc_android_log("AndroidWindow.cpp present: $<BOOL:${CMAKE_CURRENT_SOURCE_DIR}/window/detail/AndroidWindow.cpp>")
+    file(GLOB android_window_src ${CMAKE_CURRENT_SOURCE_DIR}/window/detail/AndroidWindow.cpp)
+    if(NOT android_window_src)
+        vc_android_log("ERROR: AndroidWindow.cpp NOT FOUND at ${CMAKE_CURRENT_SOURCE_DIR}/window/detail/")
+    else()
+        vc_android_log("AndroidWindow.cpp FOUND and compiled")
+    endif()
+endif()
+
 add_library(VoxelCoreSrc STATIC ${sources} ${headers})
 
+find_package(glm REQUIRED)
+
+if(ANDROID)
+    # ------------------------------------------------------------------
+    # Android dependency strategy (first iteration):
+    #   * GLEW      -> local shim (platform/android/glew_shim), proxies to GLES3
+    #   * GLFW      -> not used; window/input implemented in AndroidWindow.cpp,
+    #                  constants provided by src/window/glfw_compat.hpp
+    #   * EGL/GLESv3/android/log -> NDK system libraries
+    #   * zlib/png/vorbis/luajit/openal/freetype/curl/openssl/entt -> NDK
+    #                  system libs where available (zlib, png), otherwise stub
+    #                  targets (see dev/cmake/AndroidStubs.cmake). The stubs are
+    #                  intentionally weak symbols so that linking succeeds; any
+    #                  runtime call into a stub aborts with a clear log line.
+    # ------------------------------------------------------------------
+    set(VC_NO_GLFW ON)
+    add_compile_definitions(VC_NO_GLFW)
+    vc_android_log("VC_NO_GLFW=ON defined for all targets")
+
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../dev/cmake/AndroidStubs.cmake)
+    vc_android_log("AndroidStubs.cmake included")
+
+    target_include_directories(VoxelCoreSrc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../platform/android/glew_shim)
+    vc_android_log("GLEW shim include dir added: platform/android/glew_shim")
+
+    find_library(ANDROID_LOG_LIB log)
+    find_library(ANDROID_LIB android)
+    find_library(EGL_LIB EGL)
+    find_library(GLESV3_LIB GLESv3)
+    find_library(Z_LIB z)
+    find_library(PNG_LIB png)
+    foreach(_l ANDROID_LOG_LIB ANDROID_LIB EGL_LIB GLESV3_LIB Z_LIB PNG_LIB)
+        if(${_l})
+            vc_android_log("found NDK system lib ${_l}=${${_l}}")
+        else()
+            vc_android_log("MISSING NDK system lib: ${_l}")
+        endif()
+    endforeach()
+
+    target_link_libraries(VoxelCoreSrc
+        PUBLIC glm::glm luajit_stub entt_stub
+        PRIVATE
+            ${ANDROID_LOG_LIB} ${ANDROID_LIB} ${EGL_LIB} ${GLESV3_LIB}
+            ${Z_LIB} ${PNG_LIB}
+            glew_stub glfw_stub openal_stub curl_stub openssl_stub
+            freetype_stub vorbis_stub)
+    vc_android_log("target_link_libraries configured for Android")
+    vc_android_log("link order: system(EGL,GLESv3,z,png,log,android) + stubs")
+else()
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(glm REQUIRED)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # specific for vcpkg
     find_package(OpenAL CONFIG REQUIRED)
@@ -96,6 +179,7 @@ target_link_libraries(
            glm::glm # Need public for src/delegates.hpp, which including to
                     # main.cpp
 )
+endif()  # ANDROID / desktop dependency branch
 
 target_compile_options(
     VoxelCoreSrc
